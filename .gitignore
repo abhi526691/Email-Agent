@@ -8,7 +8,7 @@ __pycache__/
 
 credentials/*
 Notebooks/token.json
-
+token.json
 # Distribution / packaging
 .Python
 build/

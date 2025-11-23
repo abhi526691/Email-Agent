@@ -7,6 +7,7 @@ A smart email classifier and automation agent powered by Google's Gemini LLM. It
 - **LLM Classification**: Uses Gemini 2.5 Flash to intelligently categorize emails.
 - **Telegram Notifications**: Sends instant alerts for interviews, offers, and follow-ups.
 - **Automated Labeling**: Organizes your inbox by applying labels based on content.
+- **Continuous Monitoring**: Runs in the background and checks for new emails periodically.
 
 ## Setup
 
@@ -29,6 +30,9 @@ Run the agent:
 ```bash
 python -m src.main
 ```
+The agent will run continuously, checking for emails every hour (default).
+- **Configure Interval**: Change `POLLING_INTERVAL` in `src/config.py`.
+- **Stop**: Press `Ctrl+C`.
 
 ## Project Structure
 - `src/`: Source code modules.

@@ -18,6 +18,9 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 # Categories considered important for Telegram notification
 IMPORTANT_CATEGORIES = ["interview_request", "interview_reminder", "follow_up"]
 
+# Polling Interval (in seconds)
+POLLING_INTERVAL = 3600  # hour
+
 # Job Categories
 JOB_CATEGORIES = {
     "application_confirmed": {"label": "Applied ✓"},

@@ -54,7 +54,9 @@ class GmailHandler:
                 try:
                     print(f" - {label['name']}")
                 except UnicodeEncodeError:
-                    print(f" - {label['name'].encode('ascii', 'replace').decode('ascii')}")
+                    # Fallback for Windows consoles that can't handle emojis
+                    safe_name = label['name'].encode('ascii', 'replace').decode('ascii')
+                    print(f" - {safe_name}")
             print()
             return user_labels
 
@@ -81,8 +83,11 @@ class GmailHandler:
                 print(f"   Labels: {', '.join(labels) if labels else '(No Labels)'}")
                 print(f"   Snippet: {snippet}...\n")
             except UnicodeEncodeError:
-                print(f"From: {sender.encode('ascii', 'replace').decode('ascii')}")
-                print(f"   Subject: {subject.encode('ascii', 'replace').decode('ascii')}")
+                # Fallback for Windows consoles
+                safe_sender = sender.encode('ascii', 'replace').decode('ascii')
+                safe_subject = subject.encode('ascii', 'replace').decode('ascii')
+                print(f"From: {safe_sender}")
+                print(f"   Subject: {safe_subject}")
 
 
             return {"id": msg_id, "from": sender, "subject": subject, "labels": labels, "snippet": snippet}
@@ -146,4 +151,81 @@ class GmailHandler:
             return label
         except Exception as e:
             print(f"Error creating label: {e}")
+            return None
+    
+    def get_label_statistics(self):
+        """Get email count statistics for all user-created labels"""
+        try:
+            results = self.service.users().labels().list(userId='me').execute()
+            labels = results.get('labels', [])
+            
+            # Filter only user-created labels
+            user_labels = [label for label in labels if label.get('type') == 'user']
+            
+            label_stats = {}
+            for label in user_labels:
+                label_name = label['name']
+                label_id = label['id']
+                
+                # Get message count for this label
+                try:
+                    label_detail = self.service.users().labels().get(
+                        userId='me', 
+                        id=label_id
+                    ).execute()
+                    
+                    # Get total messages with this label
+                    message_count = label_detail.get('messagesTotal', 0)
+                    label_stats[label_name] = message_count
+                except Exception as e:
+                    print(f"Error getting stats for label '{label_name}': {e}")
+                    label_stats[label_name] = 0
+            
+            return label_stats
+        except Exception as e:
+            print(f"Error fetching label statistics: {e}")
+            return {}
+    
+    def get_emails_by_label(self, label_name, max_results=10):
+        """Fetch emails for a specific label"""
+        try:
+            # First, get the label ID
+            labels = self.get_labels()
+            label_id = None
+            for label in labels:
+                if label['name'].lower() == label_name.lower():
+                    label_id = label['id']
+                    break
+            
+            if not label_id:
+                print(f"Label '{label_name}' not found.")
+                return None
+            
+            # Fetch messages with this label
+            results = self.service.users().messages().list(
+                userId='me',
+                labelIds=[label_id],
+                maxResults=max_results
+            ).execute()
+            
+            messages = results.get('messages', [])
+            if not messages:
+                return []
+            
+            # Get details for each message
+            emails = []
+            for msg in messages:
+                details = self.get_email_details(msg['id'])
+                if details:
+                    emails.append(details)
+            
+            return emails
+            return emails
+        except Exception as e:
+            # Safe print for error message which might contain the label name
+            try:
+                print(f"Error fetching emails for label '{label_name}': {e}")
+            except UnicodeEncodeError:
+                safe_label = label_name.encode('ascii', 'replace').decode('ascii')
+                print(f"Error fetching emails for label '{safe_label}': {e}")
             return None

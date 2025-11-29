@@ -8,3 +8,4 @@ requests
 fastapi
 uvicorn
 slowapi
+python-telegram-bot

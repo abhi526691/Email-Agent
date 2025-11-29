@@ -101,7 +101,7 @@ class TelegramBotHandler:
         await self.application.start()
         await self.application.updater.start_polling()
         
-        print(f"✅ Telegram bot started and listening for commands...")
+        print("[OK] Telegram bot started and listening for commands...")
     
     async def stop_bot(self):
         """Stop the Telegram bot"""
@@ -109,7 +109,7 @@ class TelegramBotHandler:
             await self.application.updater.stop()
             await self.application.stop()
             await self.application.shutdown()
-            print("🛑 Telegram bot stopped")
+            print("[STOPPED] Telegram bot stopped")
 
 # Global bot instance
 bot_handler = None

@@ -14,13 +14,13 @@ async def lifespan(app: FastAPI):
     # Startup: Initialize and start Telegram bot
     bot_handler = get_bot_handler()
     await bot_handler.start_bot()
-    print("✅ FastAPI server and Telegram bot are running")
+    print("[OK] FastAPI server and Telegram bot are running")
     
     yield
     
     # Shutdown: Stop Telegram bot
     await bot_handler.stop_bot()
-    print("🛑 FastAPI server and Telegram bot stopped")
+    print("[STOPPED] FastAPI server and Telegram bot stopped")
 
 # Rate Limiter Setup
 limiter = Limiter(key_func=get_remote_address)

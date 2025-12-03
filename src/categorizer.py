@@ -55,3 +55,41 @@ class EmailCategorizer:
                 print(f"Error classifying email '{subject}': {e}")
 
         return results
+
+    def generate_reply(self, email_content, instructions=""):
+        """Generate a reply to an email based on instructions"""
+        try:
+            from langchain_core.prompts import PromptTemplate
+            
+            reply_template = """
+            You are a helpful email assistant. Draft a professional reply to the following email.
+            
+            Original Email:
+            {email_content}
+            
+            Instructions for reply:
+            {instructions}
+            
+            Draft Reply:
+            """
+            
+            prompt = PromptTemplate(
+                input_variables=["email_content", "instructions"],
+                template=reply_template
+            )
+            
+            chain = prompt | self.llm
+            
+            response_msg = chain.invoke({
+                "email_content": email_content,
+                "instructions": instructions
+            })
+            
+            if hasattr(response_msg, 'content'):
+                return response_msg.content.strip()
+            else:
+                return str(response_msg).strip()
+                
+        except Exception as e:
+            print(f"Error generating reply: {e}")
+            return "Error generating reply."

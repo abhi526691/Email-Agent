@@ -76,7 +76,12 @@ class GmailLLMAgent:
         payload = {
             "chat_id": self.chat_id,
             "text": message,
-            "parse_mode": "Markdown"
+            "parse_mode": "Markdown",
+            "reply_markup": {
+                "inline_keyboard": [[
+                    {"text": "↩️ Reply", "callback_data": f"reply:{email['id']}"}
+                ]]
+            }
         }
         try:
             response = requests.post(url, data=payload)

@@ -90,7 +90,14 @@ class GmailHandler:
                 print(f"   Subject: {safe_subject}")
 
 
-            return {"id": msg_id, "from": sender, "subject": subject, "labels": labels, "snippet": snippet}
+            return {
+                "id": msg_id, 
+                "threadId": msg.get('threadId'),
+                "from": sender, 
+                "subject": subject, 
+                "labels": labels, 
+                "snippet": snippet
+            }
 
         except Exception as e:
             print(f"Error reading email: {e}")
@@ -228,4 +235,47 @@ class GmailHandler:
             except UnicodeEncodeError:
                 safe_label = label_name.encode('ascii', 'replace').decode('ascii')
                 print(f"Error fetching emails for label '{safe_label}': {e}")
+            return None
+
+    def get_thread_details(self, thread_id):
+        """Get details about a thread, specifically message count"""
+        try:
+            thread = self.service.users().threads().get(userId='me', id=thread_id).execute()
+            messages = thread.get('messages', [])
+            return {
+                "id": thread_id,
+                "messageCount": len(messages),
+                "messages": messages
+            }
+        except Exception as e:
+            print(f"Error fetching thread details: {e}")
+            return None
+
+    def send_reply(self, thread_id, to, subject, body):
+        """Send a reply to a thread"""
+        try:
+            from email.mime.text import MIMEText
+            import base64
+
+            message = MIMEText(body)
+            message['to'] = to
+            # message['subject'] = subject # Omit subject for threading to work better naturally
+            
+            # If replying, we should ideally set References and In-Reply-To headers
+            # But for simplicity, just setting the threadId in the API call usually groups it.
+            # To be more correct, we'd fetch the last message in thread and set headers.
+            # For now, let's rely on Gmail API's threadId grouping.
+            
+            raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+            body = {'raw': raw_message, 'threadId': thread_id}
+            
+            sent_message = self.service.users().messages().send(
+                userId='me', 
+                body=body
+            ).execute()
+            
+            print(f"Reply sent to {to} (Thread: {thread_id})")
+            return sent_message
+        except Exception as e:
+            print(f"Error sending reply: {e}")
             return None

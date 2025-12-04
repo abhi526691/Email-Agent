@@ -32,8 +32,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 @app.post("/agent/start")
 @limiter.limit("5/minute")
-async def start_agent_endpoint(request: Request):
-    result = start_agent()
+async def start_agent_endpoint(request: Request, mode: str = "monitor"):
+    """
+    Start the agent.
+    Mode can be 'monitor' (default) or 'backfill'.
+    """
+    result = start_agent(mode=mode)
     
     if not result["success"]:
         raise HTTPException(status_code=400, detail=result["message"])

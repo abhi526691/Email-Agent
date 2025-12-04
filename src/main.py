@@ -35,22 +35,38 @@ def initialize_agent():
     agent = GmailLLMAgent(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, gmail_handler, categorizer)
     return agent
 
-def run_polling_loop(stop_event=None):
-    """Run the agent polling loop until stop_event is set"""
+def run_polling_loop(stop_event=None, initial_mode="monitor"):
+    """
+    Run the agent polling loop until stop_event is set
+    
+    Args:
+        stop_event: Threading event to signal stop
+        initial_mode: "monitor" (default) or "backfill"
+    """
     agent = initialize_agent()
     if not agent:
         print("Agent initialization failed.")
         return
 
-    print(f"Agent started. Polling interval: {POLLING_INTERVAL} seconds")
+    print(f"Agent started. Mode: {initial_mode}. Polling interval: {POLLING_INTERVAL} seconds")
     
+    # Handle backfill if requested
+    if initial_mode == "backfill":
+        print("🚀 Starting 24h Backfill (Read & Unread)...")
+        try:
+            agent.process_emails(hours=24, max_results=20, unread_only=False)
+            print("✅ Backfill complete. Switching to monitoring mode...")
+        except Exception as e:
+            print(f"Error during backfill: {e}")
+            
+    # Main polling loop
     while True:
         if stop_event and stop_event.is_set():
             print("Stop event received. Stopping agent...")
             break
 
         try:
-            # Process emails
+            # Process emails (Monitor mode: unread only)
             agent.process_emails(hours=24, max_results=10, unread_only=True)
         except Exception as e:
             print(f"Error during processing cycle: {e}")

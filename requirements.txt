@@ -9,3 +9,5 @@ fastapi
 uvicorn
 slowapi
 python-telegram-bot
+matplotlib>=3.8.0
+pillow>=10.0.0

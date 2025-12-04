@@ -21,6 +21,10 @@ IMPORTANT_CATEGORIES = ["interview_request", "interview_reminder", "follow_up"]
 # Polling Interval (in seconds)
 POLLING_INTERVAL = 3600  # hour
 
+# Analytics Configuration
+ANALYTICS_DB_PATH = 'analytics.db'
+ANALYTICS_CHART_DIR = 'charts'
+
 # Job Categories
 JOB_CATEGORIES = {
     "application_confirmed": {"label": "Applied ✓"},

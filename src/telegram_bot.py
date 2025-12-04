@@ -3,12 +3,15 @@ Telegram bot handler for controlling the email agent.
 Handles incoming commands like /start, /stop, and /status.
 """
 import asyncio
-from telegram import Update
+import os
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
-from src.config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, GOOGLE_API_KEY
+from src.config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, GOOGLE_API_KEY, ANALYTICS_CHART_DIR
 from src.agent_controller import start_agent, stop_agent, get_agent_status
 from src.gmail_client import GmailHandler
 from src.categorizer import EmailCategorizer
+from src.analytics_engine import AnalyticsEngine
+from src.analytics_visualizer import AnalyticsVisualizer
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 class TelegramBotHandler:
@@ -25,8 +28,14 @@ class TelegramBotHandler:
         if GOOGLE_API_KEY:
             self.llm = ChatGoogleGenerativeAI(google_api_key=GOOGLE_API_KEY, model="gemini-2.5-flash")
             self.categorizer = EmailCategorizer(self.llm)
+            
+            # Initialize analytics engine and visualizer
+            self.analytics_engine = AnalyticsEngine(self.llm)
+            self.analytics_visualizer = AnalyticsVisualizer(self.analytics_engine, ANALYTICS_CHART_DIR)
         else:
             self.categorizer = None
+            self.analytics_engine = None
+            self.analytics_visualizer = None
     
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command"""
@@ -35,15 +44,48 @@ class TelegramBotHandler:
             await update.message.reply_text("⛔ Unauthorized access")
             return
         
-        result = start_agent()
+        # If no arguments, show options
+        if not context.args:
+            keyboard = [
+                [InlineKeyboardButton("📡 Monitor Mode", callback_data="start:monitor")],
+                [InlineKeyboardButton("🚀 Backfill (24h)", callback_data="start:backfill")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(
+                "🤖 *Email Agent Control*\n\n"
+                "Please select a startup mode:",
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
+            return
+
+        # Determine mode from args
+        mode = "monitor"
+        if context.args and context.args[0].lower() == "backfill":
+            mode = "backfill"
+        
+        await self._perform_start(update.message, mode)
+
+    async def _perform_start(self, message_obj, mode):
+        """Helper to perform the start action and reply"""
+        result = start_agent(mode=mode)
         
         if result["success"]:
-            await update.message.reply_text(
-                "✅ Email Agent Started!\n\n"
-                "The agent is now monitoring your emails and will send notifications for important messages."
-            )
+            if mode == "backfill":
+                await message_obj.reply_text(
+                    "🚀 *Starting 24h Backfill*\n\n"
+                    "The agent will process ALL emails (read & unread) from the last 24 hours, "
+                    "then switch to monitoring new emails.",
+                    parse_mode="Markdown"
+                )
+            else:
+                await message_obj.reply_text(
+                    "✅ *Email Agent Started*\n\n"
+                    "The agent is now monitoring your emails and will send notifications for important messages.",
+                    parse_mode="Markdown"
+                )
         else:
-            await update.message.reply_text(f"❌ {result['message']}")
+            await message_obj.reply_text(f"❌ {result['message']}")
     
     async def stop_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /stop command"""
@@ -286,11 +328,20 @@ class TelegramBotHandler:
         
         help_text = (
             "🤖 *Email Agent Bot Commands*\n\n"
-            "/start - Start the email agent\n"
+            "*Agent Control:*\n"
+            "/start - Start the email agent (2 modes available)\n"
+            "  • 📡 Monitor Mode - Watch for new emails only\n"
+            "  • 🚀 Backfill (24h) - Process last 24h then monitor\n"
             "/stop - Stop the email agent\n"
-            "/status - Check agent status\n"
+            "/status - Check agent status\n\n"
+            "*Email Management:*\n"
             "/labels - View email categorization statistics\n"
-            "/view <label> - View emails for a specific label\n"
+            "/view <label> - View emails for a specific label\n\n"
+            "*Analytics:*\n"
+            "/analytics [days] - Show comprehensive analytics dashboard\n"
+            "/trends [days] - Display email volume trends with chart\n"
+            "/insights [days] - AI-generated insights about your emails\n"
+            "/stats [days] - Quick summary statistics\n\n"
             "/help - Show this help message"
         )
         await update.message.reply_text(help_text, parse_mode="Markdown")
@@ -303,6 +354,12 @@ class TelegramBotHandler:
         self.application.add_handler(CommandHandler("labels", self.labels_command))
         self.application.add_handler(CommandHandler("view", self.view_command))
         self.application.add_handler(CommandHandler("help", self.help_command))
+        
+        # Analytics commands
+        self.application.add_handler(CommandHandler("analytics", self.analytics_command))
+        self.application.add_handler(CommandHandler("trends", self.trends_command))
+        self.application.add_handler(CommandHandler("insights", self.insights_command))
+        self.application.add_handler(CommandHandler("stats", self.stats_command))
         
         # Add callback query handler for inline buttons
         from telegram.ext import CallbackQueryHandler
@@ -481,6 +538,176 @@ class TelegramBotHandler:
         else:
             # Ignore other messages or handle as unknown command
             pass
+    
+    async def analytics_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /analytics command - show comprehensive analytics dashboard"""
+        if str(update.effective_chat.id) != self.authorized_chat_id:
+            await update.message.reply_text("⛔ Unauthorized access")
+            return
+        
+        if not self.analytics_engine:
+            await update.message.reply_text("❌ Analytics not available (LLM not configured)")
+            return
+        
+        try:
+            # Parse days argument (default 30)
+            days = 30
+            if context.args and context.args[0].isdigit():
+                days = int(context.args[0])
+            
+            await update.message.reply_text(f"📊 Generating analytics for last {days} days...")
+            
+            # Get summary statistics
+            summary = self.analytics_engine.get_summary_statistics(days)
+            distribution = self.analytics_engine.get_category_distribution(days)
+            success = self.analytics_engine.get_success_metrics(days)
+            
+            # Format message
+            message = (
+                f"📊 *Analytics Dashboard ({days} Days)*\n\n"
+                f"*Overview:*\n"
+                f"• Total Emails: {summary['total_emails']}\n"
+                f"• Average/Day: {summary['average_per_day']}\n"
+                f"• Important: {summary['important_emails']} ({summary['important_percentage']}%)\n"
+                f"• All-Time Total: {summary['all_time_total']}\n\n"
+                f"*Top Category:*\n"
+                f"• {summary['most_common_category']}: {summary['most_common_count']} emails\n\n"
+                f"*Job Search Metrics:*\n"
+                f"• Applications: {success['applications']}\n"
+                f"• Interviews: {success['interviews']}\n"
+                f"• Offers: {success['offers']}\n"
+                f"• Rejections: {success['rejections']}\n"
+                f"• Interview Rate: {success['interview_rate']}%\n"
+                f"• Offer Rate: {success['offer_rate']}%\n"
+            )
+            
+            await update.message.reply_text(message, parse_mode="Markdown")
+            
+            # Generate and send charts
+            try:
+                # Category pie chart
+                pie_chart = self.analytics_visualizer.generate_category_pie_chart(days)
+                with open(pie_chart, 'rb') as photo:
+                    await update.message.reply_photo(photo, caption=f"Category Distribution ({days} days)")
+                
+                # Success funnel
+                if success['applications'] > 0 or success['interviews'] > 0:
+                    funnel_chart = self.analytics_visualizer.generate_success_metrics_chart(days)
+                    with open(funnel_chart, 'rb') as photo:
+                        await update.message.reply_photo(photo, caption=f"Success Funnel ({days} days)")
+                
+                # Cleanup old charts
+                self.analytics_visualizer.cleanup_old_charts()
+            except Exception as e:
+                print(f"Error generating charts: {e}")
+                
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error generating analytics: {str(e)}")
+    
+    async def trends_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /trends command - show email volume trends"""
+        if str(update.effective_chat.id) != self.authorized_chat_id:
+            await update.message.reply_text("⛔ Unauthorized access")
+            return
+        
+        if not self.analytics_visualizer:
+            await update.message.reply_text("❌ Analytics not available (LLM not configured)")
+            return
+        
+        try:
+            # Parse days argument (default 30)
+            days = 30
+            if context.args and context.args[0].isdigit():
+                days = int(context.args[0])
+            
+            await update.message.reply_text(f"📈 Generating trends for last {days} days...")
+            
+            # Get trend data
+            trends = self.analytics_engine.get_email_volume_trends(days)
+            
+            # Generate charts
+            volume_chart = self.analytics_visualizer.generate_volume_trend_chart(days)
+            stacked_chart = self.analytics_visualizer.generate_stacked_area_chart(days)
+            
+            # Send charts
+            with open(volume_chart, 'rb') as photo:
+                caption = (
+                    f"📈 *Email Volume Trend*\n"
+                    f"Trend: {trends['trend_direction'].title()} ({trends['trend_percentage']:+.1f}%)"
+                )
+                await update.message.reply_photo(photo, caption=caption, parse_mode="Markdown")
+            
+            with open(stacked_chart, 'rb') as photo:
+                await update.message.reply_photo(photo, caption=f"Category Trends ({days} days)")
+            
+            # Cleanup
+            self.analytics_visualizer.cleanup_old_charts()
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error generating trends: {str(e)}")
+    
+    async def insights_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /insights command - show AI-generated insights"""
+        if str(update.effective_chat.id) != self.authorized_chat_id:
+            await update.message.reply_text("⛔ Unauthorized access")
+            return
+        
+        if not self.analytics_engine:
+            await update.message.reply_text("❌ Analytics not available (LLM not configured)")
+            return
+        
+        try:
+            # Parse days argument (default 30)
+            days = 30
+            if context.args and context.args[0].isdigit():
+                days = int(context.args[0])
+            
+            await update.message.reply_text(f"🤖 Generating AI insights for last {days} days...")
+            
+            # Generate insights
+            insights = self.analytics_engine.generate_insights(days)
+            
+            message = (
+                f"💡 *AI-Generated Insights ({days} Days)*\n\n"
+                f"{insights}"
+            )
+            
+            await update.message.reply_text(message, parse_mode="Markdown")
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error generating insights: {str(e)}")
+    
+    async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /stats command - show quick summary statistics"""
+        if str(update.effective_chat.id) != self.authorized_chat_id:
+            await update.message.reply_text("⛔ Unauthorized access")
+            return
+        
+        if not self.analytics_engine:
+            await update.message.reply_text("❌ Analytics not available (LLM not configured)")
+            return
+        
+        try:
+            # Parse days argument (default 7)
+            days = 7
+            if context.args and context.args[0].isdigit():
+                days = int(context.args[0])
+            
+            # Get summary
+            summary = self.analytics_engine.get_summary_statistics(days)
+            
+            message = (
+                f"📊 *Quick Stats ({days} Days)*\n\n"
+                f"📧 {summary['total_emails']} emails ({summary['average_per_day']}/day)\n"
+                f"⭐ {summary['important_emails']} important ({summary['important_percentage']}%)\n"
+                f"🏆 Top: {summary['most_common_category']} ({summary['most_common_count']})\n"
+                f"💾 All-time: {summary['all_time_total']} emails tracked"
+            )
+            
+            await update.message.reply_text(message, parse_mode="Markdown")
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error fetching stats: {str(e)}")
 
     async def start_bot(self):
         """Start the Telegram bot"""

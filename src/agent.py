@@ -1,5 +1,6 @@
 import requests
 from .config import IMPORTANT_CATEGORIES
+from .analytics_db import get_analytics_db
 
 class GmailLLMAgent:
     """
@@ -14,6 +15,13 @@ class GmailLLMAgent:
         self.telegram_token = telegram_token
         self.chat_id = chat_id
         self.IMPORTANT_CATEGORIES = IMPORTANT_CATEGORIES
+        
+        # Initialize analytics database
+        try:
+            self.analytics_db = get_analytics_db()
+        except Exception as e:
+            print(f"Warning: Could not initialize analytics database: {e}")
+            self.analytics_db = None
 
     def process_emails(self, hours: int = 24, max_results: int = 5, unread_only: bool = False):
             """
@@ -53,6 +61,22 @@ class GmailLLMAgent:
                         print(f"Labeled: {email['subject'][:50].encode('ascii', 'replace').decode('ascii')} -> {label_name.encode('ascii', 'replace').decode('ascii')}")
                 except Exception as e:
                     print(f"Error applying label to '{email['subject']}': {e}")
+                
+                # 📊 Record to analytics database
+                if self.analytics_db:
+                    try:
+                        self.analytics_db.record_email(
+                            email_id=email['id'],
+                            subject=email.get('subject', ''),
+                            sender=email.get('from', ''),
+                            category=category_key,
+                            category_label=label_name,
+                            is_important=category_key in self.IMPORTANT_CATEGORIES,
+                            snippet=email.get('snippet', ''),
+                            thread_id=email.get('threadId')
+                        )
+                    except Exception as e:
+                        print(f"Warning: Could not record email to analytics: {e}")
 
                 # 3️⃣ Send Telegram notification if important
                 if category_key in self.IMPORTANT_CATEGORIES and self.telegram_token and self.chat_id:

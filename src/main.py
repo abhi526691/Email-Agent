@@ -43,39 +43,57 @@ def run_polling_loop(stop_event=None, initial_mode="monitor"):
         stop_event: Threading event to signal stop
         initial_mode: "monitor" (default) or "backfill"
     """
+    print(f"[DEBUG] run_polling_loop started with mode={initial_mode}")
     agent = initialize_agent()
     if not agent:
-        print("Agent initialization failed.")
+        print("[ERROR] Agent initialization failed.")
         return
 
-    print(f"Agent started. Mode: {initial_mode}. Polling interval: {POLLING_INTERVAL} seconds")
+    print(f"[OK] Agent started. Mode: {initial_mode}. Polling interval: {POLLING_INTERVAL} seconds")
     
     # Handle backfill if requested
     if initial_mode == "backfill":
-        print("🚀 Starting 24h Backfill (Read & Unread)...")
+        print("[INFO] Starting 24h Backfill (Read & Unread)...")
         try:
             agent.process_emails(hours=24, max_results=20, unread_only=False)
-            print("✅ Backfill complete. Switching to monitoring mode...")
+            print("[OK] Backfill complete. Switching to monitoring mode...")
         except Exception as e:
-            print(f"Error during backfill: {e}")
+            print(f"[ERROR] Critical error during backfill!")
+            print(f"[ERROR] Error type: {type(e).__name__}")
+            print(f"[ERROR] Error message: {e}")
+            import traceback
+            print("[ERROR] Full traceback:")
+            traceback.print_exc()
+            print("[ERROR] Agent will stop due to backfill error.")
+            return  # Exit the function, which will stop the agent
             
     # Main polling loop
+    print("[INFO] Entering main polling loop...")
+    cycle_count = 0
     while True:
         if stop_event and stop_event.is_set():
-            print("Stop event received. Stopping agent...")
+            print("[INFO] Stop event received. Stopping agent...")
             break
 
+        cycle_count += 1
+        print(f"[CYCLE {cycle_count}] Processing emails...")
         try:
             # Process emails (Monitor mode: unread only)
             agent.process_emails(hours=24, max_results=10, unread_only=True)
+            print(f"[CYCLE {cycle_count}] Complete. Sleeping for {POLLING_INTERVAL} seconds...")
         except Exception as e:
-            print(f"Error during processing cycle: {e}")
+            print(f"[ERROR] Error during processing cycle {cycle_count}: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Sleep in short intervals to check for stop_event
-        for _ in range(POLLING_INTERVAL):
+        for i in range(POLLING_INTERVAL):
             if stop_event and stop_event.is_set():
+                print("[INFO] Stop event detected during sleep.")
                 break
             time.sleep(1)
+    
+    print("[INFO] run_polling_loop ended.")
 
 def main():
     """Entry point for command line execution"""

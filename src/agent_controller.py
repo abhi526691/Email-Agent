@@ -33,7 +33,7 @@ def start_agent(mode="monitor"):
 
 def stop_agent():
     """Stop the email agent"""
-    global stop_event, agent_status
+    global agent_thread, stop_event, agent_status
     
     if not agent_thread or not agent_thread.is_alive():
         return {"success": False, "message": "Agent is not running"}

@@ -213,7 +213,10 @@ class TelegramBotHandler:
             return
 
         data = query.data
-        if data.startswith("view:"):
+        if data.startswith("start:"):
+            mode = data.split(":", 1)[1]
+            await self._perform_start(query.message, mode)
+        elif data.startswith("view:"):
             label_name = data.split(":", 1)[1]
             await self.show_emails_for_label(update, label_name)
         elif data.startswith("reply:"):
@@ -729,15 +732,6 @@ class TelegramBotHandler:
             await self.application.shutdown()
             print("[STOPPED] Telegram bot stopped")
 
-# Global bot instance
-bot_handler = None
-
-def get_bot_handler():
-    """Get or create the bot handler instance"""
-    global bot_handler
-    if bot_handler is None:
-        bot_handler = TelegramBotHandler(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
-    return bot_handler
 # Global bot instance
 bot_handler = None
 
